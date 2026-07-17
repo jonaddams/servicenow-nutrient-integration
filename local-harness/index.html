@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nutrient × ServiceNow — Local Harness</title>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #nutrient { width: 100vw; height: 100vh; }
+    #boot { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: #555; }
+    .toast { position: fixed; top: 16px; right: 16px; padding: 10px 14px; border-radius: 6px; color: #fff;
+             font-size: 14px; z-index: 99; opacity: 0; transition: opacity .2s; box-shadow: 0 4px 12px rgba(0,0,0,.2); max-width: 420px; }
+    .toast.show { opacity: 1; }
+    .toast.info { background: #0984e3; } .toast.success { background: #00b894; }
+    .toast.error { background: #d63031; } .toast.warning { background: #b8860b; }
+  </style>
+</head>
+<body>
+  <div id="boot">Loading Nutrient Web SDK 1.17.0 from CDN…</div>
+  <div id="nutrient"></div>
+  <script>window.HARNESS_LICENSE = __LICENSE_KEY__;</script>
+  <script src="https://cdn.cloud.pspdfkit.com/pspdfkit-web@1.17.0/nutrient-viewer.js"></script>
+  <script src="/viewer.js"></script>
+</body>
+</html>

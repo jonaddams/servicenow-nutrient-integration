@@ -1,0 +1,14 @@
+# Local credentials — holds the live Nutrient DWS API token and license key.
+# Never commit. Values live in ServiceNow (system property + UI Page), not here.
+.env.local
+
+# Machine-local Claude Code settings
+.claude/settings.local.json
+
+# Original inherited guide (binary Word doc) — kept locally, superseded in-repo
+# by the Markdown version (ServiceNow-Nutrient-Web-SDK-Integration-Guide.md).
+*.docx
+
+# OS / editor / tooling artifacts
+.DS_Store
+.playwright-mcp/

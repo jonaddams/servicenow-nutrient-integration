@@ -1,0 +1,545 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<j:jelly trim="false" xmlns:j="jelly:core" xmlns:g="glide" xmlns:j2="null" xmlns:g2="null">
+    <html>
+
+    <head>
+        <title>Nutrient Document Viewer</title>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+        <style>
+            /* ==============================================
+               SERVICENOW TYPOGRAPHY INTEGRATION
+               ============================================== */
+
+            /* Apply ServiceNow's standard font classes to Nutrient */
+            #nutrient-container,
+            #nutrient {
+                /* Use ServiceNow's base text class */
+                font-size: 15px !important;
+                /* ServiceNow's default */
+                line-height: 1.42857143 !important;
+                /* ServiceNow's default line-height */
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
+                /* ServiceNow's font stack */
+                color: #293e40 !important;
+                /* ServiceNow's default text color */
+            }
+
+            /* Apply ServiceNow button styling to Nutrient toolbar */
+            div[data-testid="pspdfkit-toolbar"],
+            .PSPDFKit-Toolbar,
+            [data-testid*="toolbar"] {
+                /* ServiceNow toolbar font size */
+                font-size: 15px !important;
+                line-height: 1.42857143 !important;
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
+                font-weight: 400 !important;
+                color: #293e40 !important;
+            }
+
+            /* ServiceNow button classes for Nutrient buttons */
+            button[data-testid*="pspdfkit"],
+            .PSPDFKit-Button,
+            [data-testid*="button"],
+            button[title="Save Document"],
+            button[title="Digitally Sign"] {
+                /* Apply ServiceNow's btn class styles */
+                font-size: 15px !important;
+                line-height: 1.42857143 !important;
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
+                font-weight: 400 !important;
+                color: #293e40 !important;
+                padding: 6px 12px !important;
+                border-radius: 3px !important;
+                border: 1px solid #ccc !important;
+                background-color: #fff !important;
+                text-align: center !important;
+                vertical-align: middle !important;
+                cursor: pointer !important;
+                white-space: nowrap !important;
+                text-decoration: none !important;
+            }
+
+            /* ServiceNow button hover state */
+            button[data-testid*="pspdfkit"]:hover,
+            .PSPDFKit-Button:hover,
+            [data-testid*="button"]:hover,
+            button[title="Save Document"]:hover,
+            button[title="Digitally Sign"]:hover {
+                color: #293e40 !important;
+                background-color: #e6e6e6 !important;
+                border-color: #adadad !important;
+                text-decoration: none !important;
+            }
+
+            /* Apply ServiceNow's text sizing to all toolbar text */
+            div[data-testid="pspdfkit-toolbar"] *,
+            .PSPDFKit-Toolbar *,
+            [data-testid*="toolbar"] *,
+            button[data-testid*="pspdfkit"] *,
+            .PSPDFKit-Button *,
+            [data-testid*="button"] *,
+            button[title="Save Document"] *,
+            button[title="Digitally Sign"] * {
+                font-size: 15px !important;
+                line-height: 1.42857143 !important;
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
+                font-weight: 400 !important;
+                color: #293e40 !important;
+            }
+
+            /* ServiceNow's form-control class for inputs */
+            #nutrient input,
+            #nutrient select,
+            #nutrient textarea {
+                font-size: 15px !important;
+                line-height: 1.42857143 !important;
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
+                color: #293e40 !important;
+            }
+
+            /* ServiceNow's dropdown styling */
+            .PSPDFKit-Dropdown,
+            .PSPDFKit-Menu,
+            [class*="Dropdown"],
+            [class*="Menu"] {
+                font-size: 15px !important;
+                line-height: 1.42857143 !important;
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
+                color: #293e40 !important;
+                background-color: #fff !important;
+                border: 1px solid rgba(0, 0, 0, 0.15) !important;
+                border-radius: 4px !important;
+                box-shadow: 0 6px 12px rgba(0, 0, 0, 0.175) !important;
+            }
+
+            .PSPDFKit-Dropdown *,
+            .PSPDFKit-Menu *,
+            [class*="Dropdown"] *,
+            [class*="Menu"] * {
+                font-size: 15px !important;
+                line-height: 1.42857143 !important;
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
+                color: #293e40 !important;
+            }
+
+            /* ==============================================
+               CSS RESET - BASE STYLES
+               (the original had a selector-less rule that browsers ignored;
+               removed to keep the CSS valid — rendering is unchanged)
+               ============================================== */
+
+            body {
+                margin: 0;
+                padding: 0;
+                background: #ffffff;
+                /* Use ServiceNow's body font */
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+                font-size: 13px;
+                line-height: 1.42857143;
+                color: #293e40;
+            }
+
+            /* ==============================================
+               MAIN CONTAINER
+               ============================================== */
+            #nutrient-container {
+                width: 100%;
+                height: 100vh;
+                position: relative;
+                background: #ffffff;
+            }
+
+            #nutrient {
+                width: 100%;
+                height: 100vh;
+                position: absolute;
+                top: 0;
+                left: 0;
+            }
+
+            /* ==============================================
+               FLOATING ELEMENTS CONTAINER
+               ============================================== */
+            #floating-elements {
+                position: fixed !important;
+                top: 40px;
+                left: 0;
+                right: 0;
+                z-index: 99999 !important;
+                pointer-events: none;
+                display: block !important;
+                height: 80px;
+            }
+
+            /* ==============================================
+               FLOATING CLOSE BUTTON (ServiceNow btn style)
+               ============================================== */
+            .floating-close-btn {
+                position: absolute;
+                top: 65px;
+                right: 20px;
+                width: 40px;
+                height: 40px;
+                /* ServiceNow button styling */
+                background-color: #fff;
+                border: 1px solid #ccc;
+                color: #293e40;
+                border-radius: 50%;
+                display: flex !important;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                pointer-events: all !important;
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+                font-size: 13px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                transition: all 0.3s ease;
+                opacity: 1 !important;
+                visibility: visible !important;
+            }
+
+            .floating-close-btn:hover {
+                background-color: #e6e6e6;
+                border-color: #adadad;
+                color: #293e40;
+                transform: scale(1.05);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+            }
+
+            /* ==============================================
+               FLOATING DOCUMENT NAME (ServiceNow label style)
+               ============================================== */
+            .floating-doc-name {
+                position: absolute;
+                top: 65px;
+                left: 10px;
+                /* ServiceNow label/badge styling */
+                background-color: #293e40;
+                /* ServiceNow dark color */
+                color: #ffffff;
+                padding: 6px 12px;
+                border-radius: 3px;
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+                font-size: 12px;
+                /* ServiceNow small text */
+                font-weight: 400;
+                line-height: 1.42857143;
+                max-width: calc(100% - 120px);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                pointer-events: auto !important;
+                display: block !important;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+                z-index: 99998 !important;
+                opacity: 0.8 !important;
+                visibility: visible !important;
+                white-space: nowrap;
+            }
+
+            .floating-doc-name:hover {
+                opacity: 1 !important;
+                box-shadow: 0 3px 6px rgba(0, 0, 0, 0.16), 0 3px 6px rgba(0, 0, 0, 0.23);
+            }
+
+            /* ==============================================
+               NOTIFICATION STYLES (ServiceNow alert style)
+               ============================================== */
+            .save-notification {
+                position: fixed;
+                top: 80px;
+                right: 20px;
+                min-width: 300px;
+                max-width: 400px;
+                /* ServiceNow alert styling */
+                padding: 15px;
+                margin-bottom: 20px;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+                font-size: 13px;
+                line-height: 1.42857143;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                font-weight: 400;
+                transform: translateX(calc(100% + 20px));
+                transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+                z-index: 10001;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+
+            .save-notification.show {
+                transform: translateX(0);
+            }
+
+            .notification-icon {
+                width: 16px;
+                /* ServiceNow icon size */
+                height: 16px;
+                flex-shrink: 0;
+                fill: currentColor;
+            }
+
+            .notification-text {
+                flex: 1;
+                font-size: 13px;
+                line-height: 1.42857143;
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            }
+
+            .notification-spinner {
+                width: 16px;
+                height: 16px;
+                border: 2px solid rgba(0, 0, 0, 0.1);
+                border-top-color: currentColor;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                flex-shrink: 0;
+            }
+
+            /* ==============================================
+               NOTIFICATION VARIANTS (ServiceNow alert colors)
+               ============================================== */
+            .save-notification.success {
+                /* ServiceNow success alert */
+                color: #3c763d;
+                background-color: #dff0d8;
+                border-color: #d6e9c6;
+            }
+
+            .save-notification.success .notification-text {
+                color: #3c763d;
+            }
+
+            .save-notification.error {
+                /* ServiceNow danger alert */
+                color: #a94442;
+                background-color: #f2dede;
+                border-color: #ebccd1;
+            }
+
+            .save-notification.error .notification-text {
+                color: #a94442;
+            }
+
+            .save-notification.warning {
+                /* ServiceNow warning alert */
+                color: #8a6d3b;
+                background-color: #fcf8e3;
+                border-color: #faebcc;
+            }
+
+            .save-notification.warning .notification-text {
+                color: #8a6d3b;
+            }
+
+            .save-notification.info {
+                /* ServiceNow info alert */
+                color: #31708f;
+                background-color: #d9edf7;
+                border-color: #bce8f1;
+            }
+
+            .save-notification.info .notification-text {
+                color: #31708f;
+            }
+
+            /* ==============================================
+               LOADING CONTAINER (ServiceNow panel style)
+               ============================================== */
+            .loading-container {
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                text-align: center;
+                /* ServiceNow panel styling */
+                background-color: #ffffff;
+                color: #293e40;
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+                font-size: 13px;
+                line-height: 1.42857143;
+            }
+
+            .spinner {
+                /* ServiceNow spinner colors */
+                border: 4px solid #f3f3f3;
+                border-top: 4px solid #337ab7;
+                /* ServiceNow primary color */
+                border-radius: 50%;
+                width: 40px;
+                height: 40px;
+                animation: spin 1s linear infinite;
+                margin-bottom: 20px;
+            }
+
+            @keyframes spin {
+                0% {
+                    transform: rotate(0deg);
+                }
+
+                100% {
+                    transform: rotate(360deg);
+                }
+            }
+
+            /* ==============================================
+               ERROR CONTAINER (ServiceNow panel-danger style)
+               ============================================== */
+            .error-container {
+                /* ServiceNow panel styling */
+                margin: 20px;
+                background-color: #ffffff;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+                border-color: #ddd;
+                padding: 15px;
+                text-align: center;
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+                font-size: 13px;
+                line-height: 1.42857143;
+                color: #293e40;
+            }
+
+            .error-container h3 {
+                margin-top: 0;
+                margin-bottom: 5px;
+                font-size: 16px;
+                font-weight: 500;
+                line-height: 1.1;
+                color: #a94442;
+                /* ServiceNow danger color */
+            }
+
+            /* ==============================================
+               MOBILE RESPONSIVE DESIGN
+               ============================================== */
+            @media (max-width: 768px) {
+                .floating-doc-name {
+                    font-size: 11px;
+                    /* ServiceNow small mobile text */
+                    padding: 4px 8px;
+                    max-width: calc(100% - 100px);
+                    top: 15px;
+                    left: 15px;
+                }
+
+                .floating-close-btn {
+                    width: 36px;
+                    height: 36px;
+                    top: 15px;
+                    right: 15px;
+                }
+
+                .save-notification {
+                    right: 10px;
+                    left: 10px;
+                    min-width: auto;
+                    max-width: none;
+                }
+            }
+
+            .PSPDFKit-Toolbar-Button-Close {
+                display: none !important;
+            }
+
+            /* Target the specific Nutrient CSS class that controls font sizing */
+            .PSPDFKit-3g5zqud1wjmcd71kwst6gjbcds,
+            .PSPDFKit-3g5zqud1wjmcd71kwst6gjbcds * {
+                box-sizing: border-box;
+                font-size: 16px !important;
+                /* Use 14px instead of 'small' for consistency */
+                line-height: 1.4 !important;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+                font-weight: 400 !important;
+                letter-spacing: normal !important;
+            }
+
+            /* Fallback for any Nutrient classes with similar patterns */
+            [class*="PSPDFKit-"][class*="wjmcd71kwst6gjbcds"],
+            [class*="PSPDFKit-"][class*="wjmcd71kwst6gjbcds"] * {
+                font-size: 16px !important;
+                line-height: 1.4 !important;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+                font-weight: 400 !important;
+                letter-spacing: normal !important;
+            }
+
+            /* Additional safety net for any generated Nutrient classes */
+            [class*="PSPDFKit-"][class*="3g5zqud1w"],
+            [class*="PSPDFKit-"][class*="3g5zqud1w"] * {
+                font-size: 16px !important;
+                line-height: 1.4 !important;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+                font-weight: 400 !important;
+                letter-spacing: normal !important;
+            }
+
+            /* Ensure our custom toolbar buttons are also properly sized */
+            button[title="Save Document"],
+            button[title="Digitally Sign"] {
+                font-size: 16px !important;
+                line-height: 1.4 !important;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+                font-weight: 400 !important;
+                padding: 6px 12px !important;
+            }
+
+            button[title="Save Document"] *,
+            button[title="Digitally Sign"] * {
+                font-size: 16px !important;
+                line-height: 1.4 !important;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+                font-weight: 400 !important;
+            }
+
+            [class*="PSPDFKit-"][class*="kwst6gjbcds"],
+            [class*="PSPDFKit-"][class*="kwst6gjbcds"] * {
+                font-size: 16px !important;
+                line-height: 1.4 !important;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+            }
+
+            /* Target the box-sizing rule specifically since that's where the font-size is set */
+            [class*="PSPDFKit-"][style*="box-sizing"],
+            [class*="PSPDFKit-"][style*="box-sizing"] * {
+                font-size: 16px !important;
+                line-height: 1.4 !important;
+            }
+        </style>
+    </head>
+    <script>
+        /* ---------------------------------------------------------------
+         * CONFIGURATION — set this per client installation.
+         * Replace the value below with the target instance's API namespace.
+         * To find it: navigate to sys_properties.list and look up
+         * glide.appcreator.company.code, or check any existing Scripted
+         * REST API URL on that instance.
+         * --------------------------------------------------------------- */
+        const NUTRIENT_API_NAMESPACE = '2169521';
+
+        // Assign to window explicitly: const at script scope does not attach to
+        // the global object, and the viewer client script reads window.g_nutrientSignUrl.
+        // NOTE: use string concatenation here, never JS template literals. This is a
+        // ServiceNow UI Page (Jelly), and Jelly evaluates dollar-brace expressions
+        // server-side, which would blank out any interpolation before the script
+        // reaches the browser.
+        window.g_nutrientSignUrl = '/api/' + NUTRIENT_API_NAMESPACE + '/nutrient_dws_signing/sign';
+    </script>
+    <body>
+        <div id="nutrient-container">
+            <div class="loading-container" id="loading-status">
+                <div class="spinner"></div>
+                <div>Loading document...</div>
+            </div>
+        </div>
+
+        <script src="https://cdn.cloud.pspdfkit.com/pspdfkit-web@1.17.0/nutrient-viewer.js"></script>
+    </body>
+
+    </html>
+</j:jelly>
