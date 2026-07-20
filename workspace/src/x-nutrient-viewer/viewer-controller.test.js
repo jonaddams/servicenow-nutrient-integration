@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SDK_CDN_URL, ensureSdkLoaded, buildToolbar, hasSignature,
-  saveToRecord, signDocument, loadTrustedCerts
+  saveToRecord, signDocument, loadTrustedCerts, loadDocument
 } from './viewer-controller.js';
 
 const fakeNutrient = {
@@ -91,4 +91,64 @@ test('ensureSdkLoaded injects a script when global absent', async () => {
   const sdk = await ensureSdkLoaded('http://cdn/x.js', { getGlobal, doc });
   assert.equal(appended.length, 1);
   assert.equal(sdk, fakeNutrient);
+});
+
+test('signDocument POSTs to signUrl with expirationTime body and same-origin creds', async () => {
+  const captured = {};
+  const instance = { signDocument: async () => {} };
+  const fetchImpl = async (url, opts) => {
+    captured.url = url;
+    captured.opts = opts;
+    return { ok: true, json: async () => ({ accessToken: 'tok', id: 'x' }) };
+  };
+  await signDocument(instance, fakeNutrient, { signUrl: '/api/x/nutrient_dws_signing/sign', expirationTime: 1200, fetchImpl });
+  assert.equal(captured.url, '/api/x/nutrient_dws_signing/sign');
+  assert.equal(captured.opts.method, 'POST');
+  assert.equal(captured.opts.credentials, 'same-origin');
+  assert.equal(JSON.parse(captured.opts.body).expirationTime, 1200);
+});
+
+test('loadTrustedCerts requests the given certsUrl same-origin', async () => {
+  const captured = {};
+  const fetchImpl = async (url, opts) => {
+    captured.url = url;
+    captured.opts = opts;
+    return { ok: true, json: async () => ({ certificates: ['P'] }) };
+  };
+  await loadTrustedCerts('/api/x/nutrient_dws_signing/certificates', { fetchImpl });
+  assert.equal(captured.url, '/api/x/nutrient_dws_signing/certificates');
+  assert.equal(captured.opts.credentials, 'same-origin');
+});
+
+test('loadDocument forwards useCDN:true and load options to NutrientViewer.load', async () => {
+  const captured = {};
+  const NutrientViewer = { load: async (cfg) => { captured.cfg = cfg; return { id: 'inst' }; } };
+  const cb = () => [];
+  const container = {};
+  const inst = await loadDocument(NutrientViewer, {
+    container, arrayBuffer: 'AB', licenseKey: 'LK', toolbarItems: [{ type: 'x' }], trustedCAsCallback: cb
+  });
+  assert.equal(captured.cfg.useCDN, true);
+  assert.equal(captured.cfg.container, container);
+  assert.equal(captured.cfg.document, 'AB');
+  assert.equal(captured.cfg.licenseKey, 'LK');
+  assert.equal(captured.cfg.trustedCAsCallback, cb);
+  assert.deepEqual(inst, { id: 'inst' });
+});
+
+test('ensureSdkLoaded sets script src and marker attribute', async () => {
+  const attrs = {};
+  let srcVal = '';
+  let loaded = false;
+  const fakeScript = {
+    set src(v) { srcVal = v; },
+    get src() { return srcVal; },
+    setAttribute(k, v) { attrs[k] = v; },
+    addEventListener(evt, cb) { if (evt === 'load') { loaded = true; setImmediate(cb); } }
+  };
+  const doc = { querySelector: () => null, createElement: () => fakeScript, head: { appendChild() {} } };
+  const getGlobal = () => (loaded ? fakeNutrient : null);
+  await ensureSdkLoaded('http://cdn/x.js', { getGlobal, doc });
+  assert.equal(srcVal, 'http://cdn/x.js');
+  assert.equal(attrs['data-nutrient-sdk'], 'true');
 });
