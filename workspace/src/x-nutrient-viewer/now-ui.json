@@ -1,0 +1,18 @@
+{
+  "components": {
+    "x-nutrient-viewer": {
+      "properties": [
+        { "name": "attachmentId", "label": "Attachment sys_id", "fieldType": "string", "defaultValue": "" },
+        { "name": "table", "label": "Parent table", "fieldType": "string", "defaultValue": "" },
+        { "name": "recordId", "label": "Parent record sys_id", "fieldType": "string", "defaultValue": "" },
+        { "name": "namespace", "label": "Scope API namespace", "fieldType": "string", "defaultValue": "2169521" }
+      ],
+      "uiBuilder": {
+        "associatedTypes": ["global.core", "record.page"],
+        "label": "Nutrient PDF Viewer",
+        "icon": "document-outline",
+        "description": "Opens a record attachment in the Nutrient viewer to view, annotate, save, and digitally sign."
+      }
+    }
+  }
+}

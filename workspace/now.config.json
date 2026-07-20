@@ -1,0 +1,8 @@
+{
+  "components": {
+    "x-nutrient-viewer": {
+      "innerComponents": [],
+      "uiBuilder": { "associatedTypes": ["global.core"] }
+    }
+  }
+}
