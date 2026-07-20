@@ -11,15 +11,19 @@ import {
 const LICENSE_KEY = '';
 
 // Endpoints under the scoped service `nutrient_dws_signing`. `<ns>` is the scope
-// namespace (glide.appcreator.company.code); resolve it via the page's base URL.
+// namespace (glide.appcreator.company.code); resolved via the `namespace` property.
 const nsPath = (ns) => `/api/${ns}/nutrient_dws_signing`;
 
 const attachmentBinaryUrl = (attachmentId) =>
   `/sys_attachment.do?sys_id=${encodeURIComponent(attachmentId)}`;
 
-async function mountViewer({ host, state, updateState, properties }) {
+async function mountViewer({ host, updateState, properties }) {
   const container = host.shadowRoot.querySelector('.nv-root');
   const ns = properties.namespace || '2169521';
+  // The resolved viewer instance lives in this local binding so the toolbar
+  // callbacks (invoked later by the SDK) always see the live instance. Reading
+  // it back off component state would capture the pre-mount null snapshot.
+  let instance = null;
   try {
     const NutrientViewer = await ensureSdkLoaded();
 
@@ -33,17 +37,23 @@ async function mountViewer({ host, state, updateState, properties }) {
 
     const onSign = async () => {
       try {
-        await signDocument(state.instance, NutrientViewer, { signUrl: `${nsPath(ns)}/sign` });
+        await signDocument(instance, NutrientViewer, { signUrl: `${nsPath(ns)}/sign` });
       } catch (e) {
-        updateState({ error: `Signing failed: ${e.message}` });
+        updateState({ bannerError: `Signing failed: ${e.message}` });
       }
     };
     const onSave = async () => {
-      if (await hasSignature(state.instance)) {
-        return; // signed docs are read-only to preserve the signature (see README)
+      if (!instance) {
+        return;
+      }
+      if (await hasSignature(instance)) {
+        // Signed documents are read-only here: re-exporting would break the
+        // signature's byte range. Surface why rather than silently no-op.
+        updateState({ bannerError: 'Save is disabled for a signed document to preserve its signature.' });
+        return;
       }
       try {
-        await saveToRecord(state.instance, async (buffer) => {
+        await saveToRecord(instance, async (buffer) => {
           const upload = await fetch(
             `/api/now/attachment/file?table_name=${encodeURIComponent(properties.table)}` +
             `&table_sys_id=${encodeURIComponent(properties.recordId)}` +
@@ -59,12 +69,12 @@ async function mountViewer({ host, state, updateState, properties }) {
           });
         });
       } catch (e) {
-        updateState({ error: `Save failed: ${e.message}` });
+        updateState({ bannerError: `Save failed: ${e.message}` });
       }
     };
 
     const toolbarItems = buildToolbar(NutrientViewer, { onSave, onSign });
-    const instance = await loadDocument(NutrientViewer, {
+    instance = await loadDocument(NutrientViewer, {
       container, arrayBuffer, licenseKey: LICENSE_KEY, toolbarItems,
       trustedCAsCallback: () => trustedCerts
     });
@@ -83,26 +93,37 @@ createCustomElement('x-nutrient-viewer', {
     recordId: { default: '' },
     namespace: { default: '2169521' }
   },
-  initialState: { instance: null, error: '' },
+  initialState: { instance: null, error: '', bannerError: '' },
   view: (state, { dispatch }) => {
+    // A pre-mount fatal error (bad attachment / SDK blocked) shows instead of the
+    // viewer — nothing has mounted yet. A post-mount action error (sign/save)
+    // shows as a banner ABOVE the still-live viewer, so the document stays usable.
     if (state.error) {
       return <div className="nv-error">{state.error}</div>;
     }
     return (
-      <div
-        className="nv-root"
-        hook={{ insert: () => dispatch('NV#MOUNT') }}
-      />
+      <div className="nv-wrap">
+        <div
+          className="nv-banner"
+          style={{ display: state.bannerError ? 'block' : 'none' }}
+        >
+          {state.bannerError || ''}
+        </div>
+        <div
+          className="nv-root"
+          hook={{ insert: () => dispatch('NV#MOUNT') }}
+        />
+      </div>
     );
   },
   actionHandlers: {
     'NV#MOUNT': (coeffects) => {
-      const { host, state, updateState, properties } = coeffects;
+      const { host, updateState, properties } = coeffects;
       if (!properties.attachmentId) {
         updateState({ error: 'No attachment specified.' });
         return;
       }
-      mountViewer({ host, state, updateState, properties });
+      mountViewer({ host, updateState, properties });
     },
     'COMPONENT_DISCONNECTED': ({ state }) => {
       if (state.instance && typeof state.instance.destroy === 'function') {
