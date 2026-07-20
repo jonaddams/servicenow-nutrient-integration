@@ -4,7 +4,7 @@
   "description": "Nutrient PDF viewer component for ServiceNow Workspace (UX Framework)",
   "type": "module",
   "scripts": {
-    "test": "node --test src/x-nutrient-viewer/",
+    "test": "node --test src/x-nutrient-viewer/*.test.js",
     "develop": "snc ui-component develop",
     "deploy": "snc ui-component deploy"
   },
