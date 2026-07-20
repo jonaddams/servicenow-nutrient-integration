@@ -36,6 +36,7 @@ async function mountViewer({ host, updateState, properties }) {
     const trustedCerts = await loadTrustedCerts(`${nsPath(ns)}/certificates`);
 
     const onSign = async () => {
+      updateState({ bannerError: '' });
       try {
         await signDocument(instance, NutrientViewer, { signUrl: `${nsPath(ns)}/sign` });
       } catch (e) {
@@ -43,6 +44,7 @@ async function mountViewer({ host, updateState, properties }) {
       }
     };
     const onSave = async () => {
+      updateState({ bannerError: '' });
       if (!instance) {
         return;
       }
