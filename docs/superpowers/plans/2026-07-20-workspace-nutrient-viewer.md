@@ -12,7 +12,7 @@
 
 - **SDK:** Nutrient Web SDK, CDN URL `https://cdn.cloud.pspdfkit.com/pspdfkit-web@1.17.0/nutrient-viewer.js`; always pass `useCDN: true`. Global is `NutrientViewer` (never `PSPDFKit`).
 - **Signing:** token minted via `POST /api/<ns>/nutrient_dws_signing/sign`, response shape `{ success, accessToken, id, expiresIn, ... }`; use `accessToken` as the `jwt`. Sign call: `instance.signDocument({ signingData: { signatureType: NutrientViewer.SignatureType.CAdES, padesLevel: NutrientViewer.PAdESLevel.b_lt } }, { jwt })`.
-- **Namespace:** the scope API namespace is `2169521` on the current instance. In all committed source use the literal `<ns>` placeholder in comments/docs and read the real value from config where code needs it; never hardcode `2169521` in source. Endpoints live under the existing service `nutrient_dws_signing`.
+- **Namespace:** the scope API namespace is `2169521` on the current instance. Expose it as a **configurable `namespace` component property** (declared in both `now-ui.json` and `index.js`) defaulting to `'2169521'` so the component works out-of-box on the current instance while remaining configurable per deployment. Use the `<ns>` placeholder in comments/docs. Endpoints live under the existing service `nutrient_dws_signing`.
 - **Modern JS:** ES2021+, `const`/`let`, template literals, arrow functions. NO `var` — except the required `var NutrientAttachmentHelper = Class.create()` idiom in the Script Include.
 - **Server runtime:** every Scripted REST resource and the Script Include MUST have **"ECMAScript 2021 mode" enabled** on its record (documented in README; cannot be set from source).
 - **Roles:** all Nutrient endpoints are gated `nutrient_user` OR `admin`.
@@ -275,7 +275,7 @@ Create the project files the Now CLI (`snc ui-component`) expects. These are aut
 - Create: `workspace/src/x-nutrient-viewer/now-ui.json`
 
 **Interfaces:**
-- Produces: an `snc`-buildable project exposing custom element `x-nutrient-viewer` with properties `attachmentId`, `table`, `recordId`, and a `uiBuilder` block.
+- Produces: an `snc`-buildable project exposing custom element `x-nutrient-viewer` with properties `attachmentId`, `table`, `recordId`, `namespace`, and a `uiBuilder` block.
 
 - [ ] **Step 1: Write `workspace/package.json`**
 
@@ -319,7 +319,8 @@ Create the project files the Now CLI (`snc ui-component`) expects. These are aut
       "properties": [
         { "name": "attachmentId", "label": "Attachment sys_id", "fieldType": "string", "defaultValue": "" },
         { "name": "table", "label": "Parent table", "fieldType": "string", "defaultValue": "" },
-        { "name": "recordId", "label": "Parent record sys_id", "fieldType": "string", "defaultValue": "" }
+        { "name": "recordId", "label": "Parent record sys_id", "fieldType": "string", "defaultValue": "" },
+        { "name": "namespace", "label": "Scope API namespace", "fieldType": "string", "defaultValue": "2169521" }
       ],
       "uiBuilder": {
         "associatedTypes": ["global.core", "record.page"],
