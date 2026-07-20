@@ -126,11 +126,17 @@ function showError(title, message) {
     try {
         const container = document.getElementById('nutrient-container');
         if (container) {
-            container.innerHTML =
-                '<div class="error-container">' +
-                '<h3>' + title + '</h3>' +
-                '<p>' + message + '</p>' +
-                '</div>';
+            // Build via DOM + textContent so title/message can never inject markup
+            const box = document.createElement('div');
+            box.className = 'error-container';
+            const heading = document.createElement('h3');
+            heading.textContent = title;
+            const para = document.createElement('p');
+            para.textContent = message;
+            box.appendChild(heading);
+            box.appendChild(para);
+            container.innerHTML = '';
+            container.appendChild(box);
         }
     } catch (error) {
         console.error('Error displaying error message:', error);
@@ -920,11 +926,17 @@ function showNotification(message, type, duration) {
     const notification = document.createElement('div');
     notification.className = 'save-notification ' + type;
 
-    const icon = getNotificationIcon(type);
-    notification.innerHTML = icon + '<span class="notification-text">' + message + '</span>';
+    // Icon markup is a trusted static constant; the dynamic message goes in via textContent
+    notification.innerHTML = getNotificationIcon(type);
+    const textSpan = document.createElement('span');
+    textSpan.className = 'notification-text';
+    textSpan.textContent = message;
+    notification.appendChild(textSpan);
 
     if (type === 'info' && duration === 0) {
-        notification.innerHTML += '<div class="notification-spinner"></div>';
+        const spinner = document.createElement('div');
+        spinner.className = 'notification-spinner';
+        notification.appendChild(spinner);
     }
 
     document.body.appendChild(notification);

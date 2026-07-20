@@ -204,7 +204,11 @@ function onLoad() {
 					'<svg class="notification-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>';
 			}
 
-			notification.innerHTML = `${icon}<span>${message}</span>`;
+			// icon is a trusted static SVG constant; the message (from postMessage) goes in via textContent
+			notification.innerHTML = icon;
+			const textSpan = document.createElement("span");
+			textSpan.textContent = message;
+			notification.appendChild(textSpan);
 			document.body.appendChild(notification);
 
 			setTimeout(() => {

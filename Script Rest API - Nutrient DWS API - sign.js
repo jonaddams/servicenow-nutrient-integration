@@ -122,17 +122,12 @@
         // =============================================================================
 
         // Create secure token request payload
+        // Only the fields the DWS tokens API requires. Internal identifiers
+        // (user id / name, session id) are NOT sent to the third-party service.
         const tokenPayload = {
             allowedOperations: ['digital_signatures_api'],
             allowedOrigins: allowedOrigins,
-            expirationTime: expirationTime,
-            metadata: {
-                requestId: requestId,
-                userId: gs.getUserID(),
-                userName: gs.getUserName(),
-                timestamp: new GlideDateTime().toString(),
-                sessionId: gs.getSessionID().substring(0, 8) // First 8 chars only for security
-            }
+            expirationTime: expirationTime
         };
 
         gs.info(`${logPrefix} [${requestId}] Token payload prepared`);
@@ -232,8 +227,16 @@
             return true;
 
         } catch (error) {
-            gs.warn(`${logPrefix} [${requestId}] Rate limit check failed: ${error.message}`);
-            return true; // Allow request if rate limit check fails
+            // FAIL OPEN — deliberate. This limiter writes to sys_cache, which
+            // non-admin users cannot write, so the check can legitimately throw for
+            // them. It is a best-effort cost/abuse mitigation, NOT a security
+            // boundary: access is already gated by the role check above and by
+            // short-lived, origin-scoped DWS tokens. Blocking signing because a
+            // best-effort counter is unavailable would be the wrong trade-off.
+            // Production hardening: move the counter to a store every signing user
+            // can write (a dedicated custom table, or gs.getSession() client data).
+            gs.warn(`${logPrefix} [${requestId}] Rate limit check unavailable; allowing (best-effort): ${error.message}`);
+            return true;
         }
     }
 
