@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SDK_CDN_URL, ensureSdkLoaded, buildToolbar, hasSignature,
-  saveToRecord, signDocument, loadTrustedCerts, loadDocument
+  saveToRecord, signDocument, loadTrustedCerts, loadDocument, resolveAttachmentId
 } from './viewer-controller.js';
 
 const fakeNutrient = {
@@ -69,6 +69,48 @@ test('loadTrustedCerts returns [] on failure', async () => {
   assert.deepEqual(await loadTrustedCerts('/certs', { fetchImpl }), []);
 });
 
+// Regression: ServiceNow Scripted REST wraps setBody payloads in a { result: ... }
+// envelope. The local harness returned bare bodies, hiding this on a real instance.
+test('signDocument reads accessToken from a ServiceNow result envelope', async () => {
+  let signArgs = null;
+  const instance = { signDocument: async (a, b) => { signArgs = [a, b]; } };
+  const fetchImpl = async () => ({ ok: true, json: async () => ({ result: { success: true, accessToken: 'wrapped-tok', id: 'x' } }) });
+  await signDocument(instance, fakeNutrient, { signUrl: '/sign', fetchImpl, userToken: 'UT' });
+  assert.deepEqual(signArgs[1], { jwt: 'wrapped-tok' });
+});
+
+test('signDocument sends X-UserToken when provided', async () => {
+  let captured = null;
+  const instance = { signDocument: async () => {} };
+  const fetchImpl = async (_url, opts) => { captured = opts; return { ok: true, json: async () => ({ accessToken: 't' }) }; };
+  await signDocument(instance, fakeNutrient, { signUrl: '/sign', fetchImpl, userToken: 'UT-123' });
+  assert.equal(captured.headers['X-UserToken'], 'UT-123');
+});
+
+test('loadTrustedCerts reads certificates from a ServiceNow result envelope', async () => {
+  const fetchImpl = async () => ({ ok: true, json: async () => ({ result: { success: true, certificates: ['PEM_A'] } }) });
+  assert.deepEqual(await loadTrustedCerts('/certs', { fetchImpl }), ['PEM_A']);
+});
+
+test('resolveAttachmentId returns newest PDF sys_id and queries sys_attachment for PDFs', async () => {
+  let capturedUrl = null;
+  const fetchImpl = async (url) => { capturedUrl = url; return { ok: true, json: async () => ({ result: [{ sys_id: 'ATT1' }] }) }; };
+  const id = await resolveAttachmentId({ table: 'incident', recordId: 'REC1', fetchImpl, userToken: 'UT' });
+  assert.equal(id, 'ATT1');
+  assert.match(capturedUrl, /sys_attachment/);
+  assert.match(capturedUrl, /content_typeLIKEpdf/);
+});
+
+test('resolveAttachmentId returns empty string without table/recordId', async () => {
+  const id = await resolveAttachmentId({ table: '', recordId: '', fetchImpl: async () => ({ ok: true, json: async () => ({}) }) });
+  assert.equal(id, '');
+});
+
+test('resolveAttachmentId returns empty string on non-ok', async () => {
+  const id = await resolveAttachmentId({ table: 'incident', recordId: 'REC1', fetchImpl: async () => ({ ok: false, json: async () => ({}) }) });
+  assert.equal(id, '');
+});
+
 test('ensureSdkLoaded resolves existing global without touching DOM', async () => {
   const sdk = await ensureSdkLoaded('http://x', { getGlobal: () => fakeNutrient, doc: null });
   assert.equal(sdk, fakeNutrient);
@@ -122,7 +164,14 @@ test('loadTrustedCerts requests the given certsUrl same-origin', async () => {
 
 test('loadDocument forwards useCDN:true and load options to NutrientViewer.load', async () => {
   const captured = {};
-  const NutrientViewer = { load: async (cfg) => { captured.cfg = cfg; return { id: 'inst' }; } };
+  const vsMock = { set: (k, v) => { captured.vsSet = { k, v }; return vsMock; } };
+  const NutrientViewer = {
+    load: async (cfg) => {
+      captured.cfg = cfg;
+      return { id: 'inst', setViewState: async (fn) => { captured.vsResult = fn(vsMock); } };
+    },
+    ShowSignatureValidationStatusMode: { IF_SIGNED: 'if-signed' }
+  };
   const cb = () => [];
   const container = {};
   const inst = await loadDocument(NutrientViewer, {
@@ -133,7 +182,9 @@ test('loadDocument forwards useCDN:true and load options to NutrientViewer.load'
   assert.equal(captured.cfg.document, 'AB');
   assert.equal(captured.cfg.licenseKey, 'LK');
   assert.equal(captured.cfg.trustedCAsCallback, cb);
-  assert.deepEqual(inst, { id: 'inst' });
+  // banner enabled via ViewState, not load() config
+  assert.deepEqual(captured.vsSet, { k: 'showSignatureValidationStatus', v: 'if-signed' });
+  assert.equal(inst.id, 'inst');
 });
 
 test('ensureSdkLoaded sets script src and marker attribute', async () => {

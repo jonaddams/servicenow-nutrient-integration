@@ -3,7 +3,7 @@ import snabbdom from '@servicenow/ui-renderer-snabbdom';
 import styles from './styles.scss';
 import {
   ensureSdkLoaded, buildToolbar, loadDocument, hasSignature,
-  saveToRecord, signDocument, loadTrustedCerts
+  saveToRecord, signDocument, loadTrustedCerts, getUserToken, resolveAttachmentId
 } from './viewer-controller.js';
 
 // License key is injected per-instance (domain-locked). Kept here to mirror the
@@ -17,9 +17,26 @@ const nsPath = (ns) => `/api/${ns}/nutrient_dws_signing`;
 const attachmentBinaryUrl = (attachmentId) =>
   `/sys_attachment.do?sys_id=${encodeURIComponent(attachmentId)}`;
 
+// When hosted on the standalone modal page, the record context arrives as URL query
+// params (?table=&recordId=) from the "Open in Nutrient" launcher. Prefer those over
+// static page props so a single page serves any record.
+function urlContext() {
+  try {
+    const p = new URLSearchParams((typeof window !== 'undefined' && window.location ? window.location.search : '') || '');
+    return { table: p.get('table') || '', recordId: p.get('recordId') || '' };
+  } catch (e) {
+    return { table: '', recordId: '' };
+  }
+}
+
 async function mountViewer({ host, updateState, properties }) {
   const container = host.shadowRoot.querySelector('.nv-root');
   const ns = properties.namespace || '2169521';
+  // Record context: URL query params (from the modal launcher) win over static props,
+  // so one standalone page works for any record.
+  const ctx = urlContext();
+  const table = ctx.table || properties.table;
+  const recordId = ctx.recordId || properties.recordId;
   // The resolved viewer instance lives in this local binding so the toolbar
   // callbacks (invoked later by the SDK) always see the live instance. Reading
   // it back off component state would capture the pre-mount null snapshot.
@@ -27,7 +44,18 @@ async function mountViewer({ host, updateState, properties }) {
   try {
     const NutrientViewer = await ensureSdkLoaded();
 
-    const res = await fetch(attachmentBinaryUrl(properties.attachmentId), { credentials: 'same-origin' });
+    // Per-attachment (explicit attachmentId) or record-level (resolve the record's
+    // newest PDF). A URL record context overrides any static attachmentId prop.
+    let attachmentId = (ctx.table && ctx.recordId) ? '' : properties.attachmentId;
+    if (!attachmentId && table && recordId) {
+      attachmentId = await resolveAttachmentId({ table, recordId });
+    }
+    if (!attachmentId) {
+      updateState({ error: 'No PDF attachment found on this record.' });
+      return;
+    }
+
+    const res = await fetch(attachmentBinaryUrl(attachmentId), { credentials: 'same-origin' });
     if (!res.ok) {
       updateState({ error: 'Unable to load attachment — you may not have access.' });
       return;
@@ -55,19 +83,29 @@ async function mountViewer({ host, updateState, properties }) {
         return;
       }
       try {
+        // ServiceNow requires the CSRF user token (X-UserToken) on state-changing
+        // REST calls authenticated via the session cookie; without it these 401.
+        const userToken = getUserToken();
         await saveToRecord(instance, async (buffer) => {
           const upload = await fetch(
-            `/api/now/attachment/file?table_name=${encodeURIComponent(properties.table)}` +
-            `&table_sys_id=${encodeURIComponent(properties.recordId)}` +
+            `/api/now/attachment/file?table_name=${encodeURIComponent(table)}` +
+            `&table_sys_id=${encodeURIComponent(recordId)}` +
             `&file_name=signed-${Date.now()}.pdf`,
-            { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/pdf' }, body: buffer }
+            {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/pdf', ...(userToken ? { 'X-UserToken': userToken } : {}) },
+              body: buffer
+            }
           );
           if (!upload.ok) {
             throw new Error('upload failed');
           }
           // delete original only after a confirmed successful upload
-          await fetch(`/api/now/attachment/${encodeURIComponent(properties.attachmentId)}`, {
-            method: 'DELETE', credentials: 'same-origin'
+          await fetch(`/api/now/attachment/${encodeURIComponent(attachmentId)}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+            headers: userToken ? { 'X-UserToken': userToken } : {}
           });
         });
       } catch (e) {
@@ -86,7 +124,7 @@ async function mountViewer({ host, updateState, properties }) {
   }
 }
 
-createCustomElement('x-nutrient-viewer', {
+createCustomElement('x-2169521-nutrient-viewer', {
   renderer: { type: snabbdom },
   styles,
   properties: {
@@ -121,8 +159,12 @@ createCustomElement('x-nutrient-viewer', {
   actionHandlers: {
     'NV#MOUNT': (coeffects) => {
       const { host, updateState, properties } = coeffects;
-      if (!properties.attachmentId) {
-        updateState({ error: 'No attachment specified.' });
+      // Accept a specific attachment, or a record (table + recordId) whose newest PDF
+      // the viewer will resolve — from static props OR the URL query params.
+      const ctx = urlContext();
+      const hasRecord = (properties.table && properties.recordId) || (ctx.table && ctx.recordId);
+      if (!properties.attachmentId && !hasRecord) {
+        updateState({ error: 'No attachment or record specified.' });
         return;
       }
       mountViewer({ host, updateState, properties });

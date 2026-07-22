@@ -1,6 +1,6 @@
 {
   "components": {
-    "x-nutrient-viewer": {
+    "x-2169521-nutrient-viewer": {
       "innerComponents": [],
       "uiBuilder": { "associatedTypes": ["global.core"] }
     }

@@ -9,6 +9,11 @@
 # by the Markdown version (ServiceNow-Nutrient-Web-SDK-Integration-Guide.md).
 *.docx
 
+# Node dependencies (workspace/ UXF component build) — never commit; restore via `npm install`
+node_modules/
+
 # OS / editor / tooling artifacts
 .DS_Store
 .playwright-mcp/
+.netcap/
+.sow-snap.txt

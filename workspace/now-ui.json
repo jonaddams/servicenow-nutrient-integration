@@ -1,6 +1,8 @@
 {
+  "scopeName": "x_2169521_nutrient",
   "components": {
     "x-2169521-nutrient-viewer": {
+      "innerComponents": [],
       "properties": [
         { "name": "attachmentId", "label": "Attachment sys_id", "fieldType": "string", "defaultValue": "" },
         { "name": "table", "label": "Parent table", "fieldType": "string", "defaultValue": "" },
