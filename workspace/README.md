@@ -177,11 +177,15 @@ What's deployed on the dev instance:
    newest PDF via `resolveAttachmentId()` → the `/certificates` + `/sign`
    endpoints do the rest. One page serves any record.
 
-> **Known cosmetic gap:** iframing a full UX experience also renders that
-> experience's app-shell nav as a thin strip inside the modal. Full-window
-> (`size:'fw'`) minimizes it. Truly chromeless needs deeper app-shell config, or
-> point `showFrame` at a bare classic UI Page instead (trades the native UXF
-> component for the classic viewer). Deferred.
+> **Known cosmetic gap (accepted):** iframing a full UX experience also renders
+> that experience's app-shell nav as a thin strip inside the modal. Full-window
+> (`size:'fw'`) minimizes it. Truly chromeless is **not** a simple swap — the
+> shell (`root_macroponent` on the experience's `sys_ux_page_registry` row) is
+> locked by the platform business rule **"Prevent app shell ui update"** (403 on
+> any change, even elevated). To go chromeless you'd have to **create a new
+> experience born with a blank shell** (e.g. `UIB Blank AppShell`; inserts aren't
+> blocked) and point `g_modal.showFrame` at it, **or** point it at a bare classic
+> UI Page (trades the UXF component for the classic viewer). Left as-is by choice.
 
 Alternative (not used): a native `RECORD#OPEN_MODAL` route rendering the
 component directly — more "correct" but a multi-record UX build (route +
@@ -230,7 +234,9 @@ role-gating end-to-end.
 ## 10. Notes / residual items
 
 - **Chromeless modal** (§6 callout) — the nested app-shell nav strip; cosmetic,
-  deferred.
+  accepted as-is. Changing an existing experience's shell is blocked by the
+  "Prevent app shell ui update" business rule; chromeless would need a new
+  blank-shell experience or the classic bare viewer.
 - **Client-side caching** — declarative-action and UX metadata are cached; after
   server-side changes run `/cache.do` + hard refresh. Avoid nuking the SOW app's
   IndexedDB/localStorage/service-worker — it breaks the app-shell bootstrap.
