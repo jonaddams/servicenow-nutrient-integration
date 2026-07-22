@@ -1,9 +1,17 @@
-# Workspace client — deployment runbook
+# Workspace (UXF) client — deployment guide
 
-> Status: **built and verified end-to-end on a live instance** (dev PDI,
-> Service Operations Workspace). View → annotate → save → **digitally sign**
-> (green-valid), launched per-record from a record action, resolving the
-> record's PDF dynamically. See §9 for what was validated.
+The client for **Agent / Service Operations Workspace** (Next Experience / UXF).
+An **Open in Nutrient** button on a record opens the Nutrient viewer in a modal
+to view, annotate, save, and digitally sign — resolving the record's PDF
+dynamically. Verified end‑to‑end on a live instance.
+
+← Back to the [project overview](../README.md).
+
+> **Prerequisite:** deploy the [shared server layer](../shared/README.md)
+> **first** — including the two Workspace‑only REST resources (`GET /metadata`
+> and `GET /certificates`) and the `http_get` `REST_Endpoint` ACL. This guide
+> assumes those, the DWS token, certificates, and the `nutrient_user` role are
+> already in place.
 
 ## 1. Overview
 
