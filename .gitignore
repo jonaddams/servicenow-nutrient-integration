@@ -5,10 +5,6 @@
 # Machine-local Claude Code settings
 .claude/settings.local.json
 
-# Original inherited guide (binary Word doc) — kept locally, superseded in-repo
-# by the Markdown version (ServiceNow-Nutrient-Web-SDK-Integration-Guide.md).
-*.docx
-
 # Node dependencies (workspace/ UXF component build) — never commit; restore via `npm install`
 node_modules/
 
