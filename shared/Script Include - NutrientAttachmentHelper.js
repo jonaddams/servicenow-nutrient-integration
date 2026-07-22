@@ -23,33 +23,29 @@ NutrientAttachmentHelper.prototype = Object.extendsObject(AbstractAjaxProcessor,
      */
 
     /**
-     * Get attachment information by sys_id.
-     * Validates the id, enforces that the caller may actually read the
-     * attachment (global-scope GlideRecord.get bypasses ACLs, so we check
-     * explicitly), and returns sanitized metadata.
-     * @returns {Object} JSON response with attachment details
+     * Core attachment-metadata logic, callable with an explicit sys_id.
+     * Enforces per-record access control. Returns a plain object (no GlideAjax
+     * result element) so both GlideAjax and Scripted REST callers can use it.
+     * @param {string} sysId
+     * @returns {Object}
      */
-    getAttachmentInfo() {
+    getAttachmentDetails(sysId) {
         try {
-            const sysId = this.getParameter('sysparm_sys_id');
-
             if (!this._isValidSysId(sysId)) {
-                return this._result({ success: false, error: 'Invalid or missing attachment ID' });
+                return { success: false, error: 'Invalid or missing attachment ID' };
             }
 
             const attachmentGR = new GlideRecord('sys_attachment');
             if (!attachmentGR.get(sysId)) {
-                return this._result({ success: false, error: 'Attachment not found' });
+                return { success: false, error: 'Attachment not found' };
             }
 
-            // Access control: get() bypasses ACLs in global scope, so verify the
-            // current user is actually allowed to read this attachment.
             if (!this._hasAttachmentAccess(attachmentGR)) {
-                gs.warn(`[NutrientAttachmentHelper.getAttachmentInfo] Access denied for ${gs.getUserName()} on attachment ${sysId}`);
-                return this._result({ success: false, error: 'You do not have access to this attachment' });
+                gs.warn(`[NutrientAttachmentHelper.getAttachmentDetails] Access denied for ${gs.getUserName()} on attachment ${sysId}`);
+                return { success: false, error: 'You do not have access to this attachment' };
             }
 
-            return this._result({
+            return {
                 success: true,
                 fileName: this._sanitizeString(attachmentGR.getValue('file_name')) || 'Unknown',
                 sizeBytes: parseInt(attachmentGR.getValue('size_bytes') || '0', 10),
@@ -57,22 +53,25 @@ NutrientAttachmentHelper.prototype = Object.extendsObject(AbstractAjaxProcessor,
                 tableName: this._sanitizeString(attachmentGR.getValue('table_name')) || '',
                 tableId: this._sanitizeString(attachmentGR.getValue('table_sys_id')) || '',
                 createdOn: this._sanitizeString(attachmentGR.getValue('sys_created_on')) || ''
-            });
-
+            };
         } catch (error) {
-            return this._result({ success: false, error: `Server error: ${error.toString()}` });
+            return { success: false, error: `Server error: ${error.toString()}` };
         }
     },
 
     /**
-     * Return the active trusted CA certificates (PEM) for signature validation.
-     * Runs server-side, so it reads sys_certificate with full access regardless
-     * of the caller's roles — the browser no longer needs direct sys_certificate
-     * access via the Table API. Client access is still gated by this Script
-     * Include's ACL (nutrient_user / admin).
-     * @returns {Object} JSON { success, certificates: [pem, ...] }
+     * GlideAjax entry point (classic UI). Contract unchanged.
      */
-    getTrustedCertificates() {
+    getAttachmentInfo() {
+        return this._result(this.getAttachmentDetails(this.getParameter('sysparm_sys_id')));
+    },
+
+    /**
+     * Core trusted-cert logic. Returns a plain object usable by GlideAjax and REST.
+     * Runs server-side, reading sys_certificate with full access regardless of caller roles.
+     * @returns {Object} { success, certificates: [pem, ...] }
+     */
+    getTrustedCertificatesData() {
         try {
             const certificates = [];
             const certGR = new GlideRecord('sys_certificate');
@@ -86,13 +85,19 @@ NutrientAttachmentHelper.prototype = Object.extendsObject(AbstractAjaxProcessor,
                 }
             }
 
-            gs.info(`[NutrientAttachmentHelper.getTrustedCertificates] Returning ${certificates.length} certificate(s)`);
-            return this._result({ success: true, certificates: certificates });
-
+            gs.info(`[NutrientAttachmentHelper.getTrustedCertificatesData] Returning ${certificates.length} certificate(s)`);
+            return { success: true, certificates: certificates };
         } catch (error) {
-            gs.error(`[NutrientAttachmentHelper.getTrustedCertificates] Error: ${error.toString()}`);
-            return this._result({ success: false, error: `Server error: ${error.toString()}`, certificates: [] });
+            gs.error(`[NutrientAttachmentHelper.getTrustedCertificatesData] Error: ${error.toString()}`);
+            return { success: false, error: `Server error: ${error.toString()}`, certificates: [] };
         }
+    },
+
+    /**
+     * GlideAjax entry point (classic UI). Contract unchanged.
+     */
+    getTrustedCertificates() {
+        return this._result(this.getTrustedCertificatesData());
     },
 
     /**

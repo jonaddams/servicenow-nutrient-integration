@@ -9,7 +9,7 @@ ServiceNow has two front ends, and the integration point differs between them. T
 | Version | Folder | Status |
 |---|---|---|
 | **Classic / Platform UI** (traditional forms, "UI16") | [`classic-ui/`](./classic-ui) | ✅ **Implemented & validated** (view · save‑as‑PDF · digitally sign, for admin and non‑admin roles) |
-| **Workspace** (Agent / Service Operations Workspace, Next Experience / UXF) | [`workspace/`](./workspace) | ⛔ **Not implemented** — separate build; see the folder's README |
+| **Workspace** (Agent / Service Operations Workspace, Next Experience / UXF) | [`workspace/`](./workspace) | ✅ **Implemented & validated** on a dev PDI — a UXF component (`x-2169521-nutrient-viewer`) launched from a record action‑bar button ("Open in Nutrient") into a modal; view · save · digitally sign (green‑valid), resolving the record's PDF dynamically. See the folder's README. |
 
 Both versions share the same server layer.
 
@@ -23,7 +23,7 @@ shared/          Server + certs, UI-agnostic — every version uses these
 classic-ui/      Client layer for the classic Platform UI (the working build)
   Client Script - Nutrient_hook.js               intercepts attachment clicks
   UI Page - nutrient_pdf_viewer.{html,js}        hosts the Nutrient Web SDK
-workspace/       Client layer for Agent/Service Operations Workspace (to be built)
+workspace/       Client layer for Agent/Service Operations Workspace (UXF component, built)
 docs/            Deployment runbook + original integration guide
 local-harness/   Node harness to exercise the Nutrient side offline
 ```
@@ -47,5 +47,5 @@ A local `.env.local` (git‑ignored) is only a scratch holder for these while wo
 
 ## Known limitations
 
-- **Classic UI only.** The classic client uses a client script + DOM interception, which don't run in Workspace — see [`workspace/`](./workspace).
+- **Two separate clients.** The classic client (client script + DOM interception) runs only in the classic Platform UI; the [`workspace/`](./workspace) client (a UXF component) runs only in Agent/Service Operations Workspace. Both share the `shared/` server layer. Deploy the client(s) for whichever UI(s) the users actually work in.
 - **Sign, then Save, invalidates the signature** — Save re‑exports the PDF and rewrites the bytes. Treat signing and convert‑on‑save as mutually exclusive per document.
