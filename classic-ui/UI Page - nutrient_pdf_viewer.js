@@ -377,7 +377,9 @@ function initializeNutrient(documentArrayBuffer) {
 
     // Initialize viewer
     const viewerConfig = {
-        licenseKey: "u4Q06ZM1NxUWSmZ_uPJCA211FQNZYfS2UfliIz2M51uer9kJzavQzFS47HE4WCIKDhiKHdpUwZ0QMSFq3WDiAna5YS7X1pllxdr0sKHDCbfnSnPxKTxD4meE-zkzPkEZ7VgNyZ2z3Foz2Q3lkal9hUyEETC2_BTHL_VsqjRnXu9pM4FD6P94o14cvm-nnHKcxGRJp5QhrNUcoE1hOlHLW7encjZd_8KNbenmIAy5UD7irLMVy0DhHNXsmx2cUZ5NlB2AqPcEniY6hd2YQyueoRk6rAV8f3q8SM3AraoTOhk5ti2aUCpLA6njqt8UgCU-LfgFPnGoceJp8k8GzBqpYScsnxKFQR9XT470KsnpKe38k3mz31VFlGiz7AaYcKLYmO-6Nqg1p3lAeONdt2nKDFM1E3hNcH4FhFU_tav_5KnpVFsUPLiEGZH7sfjTdisaED4L5eMYWxRPGiAS8Y7zMrTBssa9ltUTyonycOEtUec",
+        // Domain-locked Web SDK license key. Paste your instance-matched key here
+        // (see classic-ui/README.md §2). Left blank in source so no key is committed.
+        licenseKey: "",
         container: "#nutrient",
         document: documentArrayBuffer,
         useCDN: true,
