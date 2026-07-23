@@ -44,6 +44,8 @@ Two per‑instance values live in the UI Page:
 
 Edit both in the `nutrient_pdf_viewer` record and **Update**.
 
+> ℹ️ The source ships with **no license key** — `licenseKey` is intentionally blank so no key is committed to the repo. Paste your own key here.
+
 > ⚠️ The license key is **domain‑locked** — it must be issued for your instance host (e.g. `devXXXXX.service-now.com`). A mismatched key renders the viewer heavily watermarked and makes signatures look modified.
 
 ---
