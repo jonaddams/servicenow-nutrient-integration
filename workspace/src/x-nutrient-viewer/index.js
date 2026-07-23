@@ -87,10 +87,12 @@ async function mountViewer({ host, updateState, properties }) {
         // REST calls authenticated via the session cookie; without it these 401.
         const userToken = getUserToken();
         await saveToRecord(instance, async (buffer) => {
+          // Save is only reachable for UNSIGNED documents (signed docs are blocked
+          // above to preserve their byte range), so the name must not imply "signed".
           const upload = await fetch(
             `/api/now/attachment/file?table_name=${encodeURIComponent(table)}` +
             `&table_sys_id=${encodeURIComponent(recordId)}` +
-            `&file_name=signed-${Date.now()}.pdf`,
+            `&file_name=saved-${Date.now()}.pdf`,
             {
               method: 'POST',
               credentials: 'same-origin',
