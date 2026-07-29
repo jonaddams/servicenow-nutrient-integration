@@ -80,10 +80,21 @@ export async function hasSignature(instance) {
 /**
  * Export the current document and hand the bytes to uploadFn.
  * uploadFn is responsible for uploading and (only on success) deleting the original.
+ * Its resolved value is passed back so the caller can learn the new attachment's
+ * identity (to report the saved filename and re-point at it for a later save).
  */
 export async function saveToRecord(instance, uploadFn) {
   const buffer = await instance.exportPDF();
-  await uploadFn(buffer);
+  return uploadFn(buffer);
+}
+
+/**
+ * Pull the new attachment's sys_id + file_name out of an Attachment API upload
+ * response. Tolerates the `{ result: ... }` envelope and a bare body.
+ */
+export function parseUploadedAttachment(json) {
+  const row = unwrapResult(json) || {};
+  return { sysId: row.sys_id || '', fileName: row.file_name || '' };
 }
 
 /**
@@ -105,13 +116,18 @@ export function unwrapResult(data) {
 }
 
 /**
- * When launched from a record-level action (no specific attachment), resolve the
- * record's newest PDF attachment via the Table API. Returns its sys_id, or '' if
- * none / on error. GET needs X-UserToken like the other scoped calls.
+ * List a record's PDF attachments via the Table API, newest first, with the fields
+ * needed to label each one in the picker. Returns [] if none / on error.
+ * GET needs X-UserToken like the other scoped calls.
+ *
+ * The record-level launcher ("Open in Nutrient" on the action bar) carries no
+ * attachment identity — ServiceNow's OOB Attachments sidebar does not expose its
+ * selection to a declarative action — so when a record holds several PDFs the
+ * caller must offer a choice instead of guessing.
  */
-export async function resolveAttachmentId({ table, recordId, fetchImpl = fetch, userToken = getUserToken() }) {
+export async function listPdfAttachments({ table, recordId, fetchImpl = fetch, userToken = getUserToken(), limit = 50 }) {
   if (!table || !recordId) {
-    return '';
+    return [];
   }
   const headers = { Accept: 'application/json' };
   if (userToken) {
@@ -119,18 +135,51 @@ export async function resolveAttachmentId({ table, recordId, fetchImpl = fetch, 
   }
   const query = `table_name=${encodeURIComponent(table)}^table_sys_id=${encodeURIComponent(recordId)}` +
     `^content_typeLIKEpdf^ORDERBYDESCsys_created_on`;
-  const url = `/api/now/table/sys_attachment?sysparm_limit=1&sysparm_fields=sys_id&sysparm_query=${query}`;
+  const url = `/api/now/table/sys_attachment?sysparm_limit=${limit}` +
+    `&sysparm_fields=sys_id,file_name,size_bytes,sys_created_on&sysparm_query=${query}`;
   try {
     const res = await fetchImpl(url, { credentials: 'same-origin', headers });
     if (!res.ok) {
-      return '';
+      return [];
     }
     const data = unwrapResult(await res.json());
-    const rows = Array.isArray(data) ? data : (data && data.result) || [];
-    return rows.length ? rows[0].sys_id : '';
+    return Array.isArray(data) ? data : (data && data.result) || [];
   } catch (error) {
-    return '';
+    return [];
   }
+}
+
+/**
+ * When launched from a record-level action (no specific attachment), resolve the
+ * record's newest PDF attachment. Returns its sys_id, or '' if none / on error.
+ */
+export async function resolveAttachmentId({ table, recordId, fetchImpl = fetch, userToken = getUserToken() }) {
+  const rows = await listPdfAttachments({ table, recordId, fetchImpl, userToken, limit: 1 });
+  return rows.length ? rows[0].sys_id : '';
+}
+
+/**
+ * Secondary label for a picker row, e.g. "48.8 KB · 2026-07-20". Uses decimal
+ * (1000-based) units deliberately so the figure matches what ServiceNow's own
+ * Attachments sidebar shows for the same file.
+ */
+export function formatAttachmentMeta({ size_bytes: sizeBytes, sys_created_on: createdOn } = {}) {
+  const parts = [];
+  const bytes = Number(sizeBytes);
+  if (Number.isFinite(bytes) && bytes > 0) {
+    if (bytes >= 1e6) {
+      parts.push(`${(bytes / 1e6).toFixed(1)} MB`);
+    } else if (bytes >= 1e3) {
+      parts.push(`${(bytes / 1e3).toFixed(1)} KB`);
+    } else {
+      parts.push(`${bytes} B`);
+    }
+  }
+  if (createdOn) {
+    // sys_created_on arrives as "YYYY-MM-DD hh:mm:ss"; the date alone is enough here.
+    parts.push(String(createdOn).slice(0, 10));
+  }
+  return parts.join(' · ');
 }
 
 /**
