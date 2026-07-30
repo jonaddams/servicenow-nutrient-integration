@@ -47,15 +47,29 @@ workspace/
     ├── now-ui.json                     # per-component metadata (properties, icon, associated types)
     ├── index.js                        # the component: mount/render/action-handler wiring
     ├── viewer-controller.js            # framework-agnostic SDK load/sign/save logic (unit-tested)
-    ├── viewer-controller.test.js       # node --test coverage (21 tests)
+    ├── viewer-controller.test.js       # node --test coverage (31 tests)
     └── styles.scss
 ```
 
 The component declares four properties (`now-ui.json`): `attachmentId`, `table`,
 `recordId`, and `namespace` (defaults to `"2169521"` — override per instance).
 Launched record-level, it reads `table`/`recordId` from its own URL query params
-(see §6) and resolves the record's newest PDF itself; `attachmentId` is optional
-(used only if you launch it for one specific attachment).
+(see §6) and finds the record's PDFs itself; `attachmentId` is optional (used only
+if you launch it for one specific attachment).
+
+**Which document opens**, in precedence order:
+
+1. the one the user picked in the attachment picker (below);
+2. `?attachmentId=` on the URL, if the launcher pins one;
+3. the static `attachmentId` property (ignored once a URL record context is
+   present, so one page can serve any record);
+4. otherwise the record's PDFs are listed — **one** opens directly, **several**
+   show a picker, **none** shows "No PDF attachment found on this record."
+
+The picker exists because the action-bar launcher carries no attachment
+identity: ServiceNow's stock Attachments sidebar does not expose which row the
+user highlighted (see §6), so with multiple PDFs the component asks rather than
+guessing. Each choice is labelled with filename, size, and upload date.
 
 ## 2. Prerequisites
 
@@ -143,8 +157,9 @@ Also exposed as `npm run deploy` in [`package.json`](./package.json).
 
 The per-individual-attachment "⋮" menu on the stock Workspace attachments
 component is **not** extensible (hard-coded Download/Delete). So the viewer is
-launched from a **record action bar button**, and the component resolves the
-record's newest PDF itself.
+launched from a **record action bar button**. That button is record-level — it
+cannot see which attachment is selected in the sidebar — so the component lists
+the record's PDFs and offers a picker when there is more than one (§1).
 
 What's deployed on the dev instance:
 
@@ -180,10 +195,10 @@ What's deployed on the dev instance:
 
 2. **A destination page** — `/now/nutrient/nutrient` (a small UX experience)
    hosts `x-2169521-nutrient-viewer`. `g_modal.showFrame` iframes it. The
-   component reads `?table` / `?recordId` from that URL (`urlContext()` in
-   `index.js`), overriding any static page props, and resolves the record's
-   newest PDF via `resolveAttachmentId()` → the `/certificates` + `/sign`
-   endpoints do the rest. One page serves any record.
+   component reads `?table` / `?recordId` (and optionally `?attachmentId`) from
+   that URL (`urlContext()` in `index.js`), overriding any static page props, and
+   lists the record's PDFs via `listPdfAttachments()` → the `/certificates` +
+   `/sign` endpoints do the rest. One page serves any record.
 
 > **Known cosmetic gap (accepted):** iframing a full UX experience also renders
 > that experience's app-shell nav as a thin strip inside the modal. Full-window
@@ -225,6 +240,23 @@ without exporting — `exportPDF()` re-serializes the bytes and would invalidate
 the CAdES/PAdES byte-range signature. Signing and save-as-PDF are mutually
 exclusive per document (same as classic).
 
+## 8a. Save feedback
+
+Save reports its outcome in a banner above the viewer, because
+`exportPDF()` + upload has no progress indicator of its own:
+
+| State | Banner |
+|---|---|
+| In flight | *"Saving to the record…"* (blue) |
+| Success | *"Saved to the record as `saved-<timestamp>.pdf`."* (green) |
+| Failure | *"Save failed: …"* (red), including the HTTP status on an upload error |
+| Blocked | *"Save is disabled for a signed document…"* (red) — see §8 |
+
+Save replaces the attachment: it uploads the exported PDF, then deletes the
+original **only after** the upload succeeds. The component then re-points at the
+newly created attachment, so a second Save replaces that file rather than adding
+another copy. A concurrent second click while a save is in flight is ignored.
+
 ## 9. Validated on the dev instance (2026-07)
 
 - ✅ Record → **"Open in Nutrient"** (action bar) → full-window modal → viewer
@@ -234,7 +266,10 @@ exclusive per document (same as classic).
 - ✅ **Digitally Sign** → `getSignaturesInfo()` reports
   `status: 'valid', certificateChainValidationStatus: 'ok', isTrusted: true`
   (green) with the three CA certs uploaded.
-- ✅ Save (unsigned) replaces the attachment; Save disabled after signing (§8).
+- ✅ Save (unsigned) replaces the attachment and reports success in a banner
+  (§8a); Save disabled after signing (§8).
+- ✅ **Multiple PDFs on one record** → picker lists both; choosing the older one
+  opens *that* document (previously the newest always won).
 
 Re-run as a **non-admin** `nutrient_user` before a customer demo to confirm the
 role-gating end-to-end.

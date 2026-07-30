@@ -11,12 +11,31 @@
   height: 100%;
 }
 
+/* One banner strip above the viewer, colour-coded by outcome. Save has no progress
+   of its own, so it reports in-flight ("info") as well as success/failure. */
 .nv-banner {
   padding: 8px 16px;
-  background: #fdecea;
-  color: #b00020;
   font-family: inherit;
   font-size: 14px;
+  border-left: 4px solid transparent;
+}
+
+.nv-banner--error {
+  background: #fdecea;
+  color: #b00020;
+  border-left-color: #b00020;
+}
+
+.nv-banner--success {
+  background: #e8f5e9;
+  color: #1b5e20;
+  border-left-color: #2e7d32;
+}
+
+.nv-banner--info {
+  background: #eef4fb;
+  color: #1b3b5a;
+  border-left-color: #0b6b9b;
 }
 
 .nv-root {
@@ -30,4 +49,67 @@
   padding: 16px;
   color: #b00020;
   font-family: inherit;
+}
+
+/* Shown when a record holds several PDFs — the action-bar launcher cannot tell us
+   which one the user highlighted, so we ask instead of guessing. */
+.nv-picker {
+  padding: 24px;
+  font-family: inherit;
+  color: #2e2e2e;
+}
+
+.nv-picker-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.nv-picker-sub {
+  margin: 4px 0 16px;
+  font-size: 14px;
+  color: #5a5a5a;
+}
+
+.nv-picker-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-width: 560px;
+}
+
+.nv-picker-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 12px 16px;
+  border: 1px solid #cdcdcd;
+  border-radius: 4px;
+  background: #fff;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    border-color: #0b6b9b;
+    background: #f2f9fc;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #0b6b9b;
+    outline-offset: 1px;
+  }
+}
+
+.nv-picker-name {
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.nv-picker-meta {
+  font-size: 12px;
+  color: #5a5a5a;
 }

@@ -23,7 +23,7 @@ ServiceNow has **two different user interfaces**, and they need **different clie
 | If your users work in… | You need | Folder | What it looks like |
 |---|---|---|---|
 | **Classic / Platform UI** — the traditional form view (e.g. `incident.do`, "UI16") | **Classic client** | [`classic-ui/`](./classic-ui) | Clicking an attachment opens the viewer full‑screen. |
-| **Agent / Service Operations Workspace** — the tabbed "Next Experience" workspace | **Workspace client** | [`workspace/`](./workspace) | An **Open in Nutrient** button on the record opens the viewer in a modal. |
+| **Agent / Service Operations Workspace** — the tabbed "Next Experience" workspace | **Workspace client** | [`workspace/`](./workspace) | An **Open in Nutrient** button on the record opens the viewer in a modal (if the record has several PDFs, you pick which one). |
 
 **Not sure which one your users use?** Open a record (e.g. an incident) the way your fulfillers normally do:
 - If the URL looks like `.../nav_to.do?uri=incident.do...` and you see a single classic form → **Classic**.

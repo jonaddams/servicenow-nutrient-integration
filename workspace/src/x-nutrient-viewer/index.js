@@ -3,7 +3,8 @@ import snabbdom from '@servicenow/ui-renderer-snabbdom';
 import styles from './styles.scss';
 import {
   ensureSdkLoaded, buildToolbar, loadDocument, hasSignature,
-  saveToRecord, signDocument, loadTrustedCerts, getUserToken, resolveAttachmentId
+  saveToRecord, signDocument, loadTrustedCerts, getUserToken,
+  listPdfAttachments, formatAttachmentMeta, parseUploadedAttachment
 } from './viewer-controller.js';
 
 // License key is injected per-instance (domain-locked). Kept here to mirror the
@@ -19,17 +20,22 @@ const attachmentBinaryUrl = (attachmentId) =>
 
 // When hosted on the standalone modal page, the record context arrives as URL query
 // params (?table=&recordId=) from the "Open in Nutrient" launcher. Prefer those over
-// static page props so a single page serves any record.
+// static page props so a single page serves any record. An optional &attachmentId=
+// pins one specific attachment, bypassing resolution and the picker.
 function urlContext() {
   try {
     const p = new URLSearchParams((typeof window !== 'undefined' && window.location ? window.location.search : '') || '');
-    return { table: p.get('table') || '', recordId: p.get('recordId') || '' };
+    return {
+      table: p.get('table') || '',
+      recordId: p.get('recordId') || '',
+      attachmentId: p.get('attachmentId') || ''
+    };
   } catch (e) {
-    return { table: '', recordId: '' };
+    return { table: '', recordId: '', attachmentId: '' };
   }
 }
 
-async function mountViewer({ host, updateState, properties }) {
+async function mountViewer({ host, updateState, properties, chosenId = '' }) {
   const container = host.shadowRoot.querySelector('.nv-root');
   const ns = properties.namespace || '2169521';
   // Record context: URL query params (from the modal launcher) win over static props,
@@ -44,11 +50,20 @@ async function mountViewer({ host, updateState, properties }) {
   try {
     const NutrientViewer = await ensureSdkLoaded();
 
-    // Per-attachment (explicit attachmentId) or record-level (resolve the record's
-    // newest PDF). A URL record context overrides any static attachmentId prop.
-    let attachmentId = (ctx.table && ctx.recordId) ? '' : properties.attachmentId;
+    // Which document? In precedence order: the one just picked, an attachmentId
+    // pinned on the URL, a static attachmentId prop (ignored once a URL record
+    // context is present, so one page can serve any record), else resolve from the
+    // record. A record with several PDFs gets a picker rather than a guess — the
+    // action-bar launcher cannot tell us which one the user highlighted.
+    let attachmentId = chosenId || ctx.attachmentId ||
+      ((ctx.table && ctx.recordId) ? '' : properties.attachmentId);
     if (!attachmentId && table && recordId) {
-      attachmentId = await resolveAttachmentId({ table, recordId });
+      const pdfs = await listPdfAttachments({ table, recordId });
+      if (pdfs.length > 1) {
+        updateState({ choices: pdfs });
+        return;
+      }
+      attachmentId = pdfs.length ? pdfs[0].sys_id : '';
     }
     if (!attachmentId) {
       updateState({ error: 'No PDF attachment found on this record.' });
@@ -64,29 +79,36 @@ async function mountViewer({ host, updateState, properties }) {
     const trustedCerts = await loadTrustedCerts(`${nsPath(ns)}/certificates`);
 
     const onSign = async () => {
-      updateState({ bannerError: '' });
+      updateState({ banner: null });
       try {
         await signDocument(instance, NutrientViewer, { signUrl: `${nsPath(ns)}/sign` });
       } catch (e) {
-        updateState({ bannerError: `Signing failed: ${e.message}` });
+        updateState({ banner: { kind: 'error', message: `Signing failed: ${e.message}` } });
       }
     };
+    // Guards against a second Save landing while the first is still in flight —
+    // export + upload is slow enough on a large PDF to double-click through.
+    let saving = false;
     const onSave = async () => {
-      updateState({ bannerError: '' });
-      if (!instance) {
+      updateState({ banner: null });
+      if (!instance || saving) {
         return;
       }
       if (await hasSignature(instance)) {
         // Signed documents are read-only here: re-exporting would break the
         // signature's byte range. Surface why rather than silently no-op.
-        updateState({ bannerError: 'Save is disabled for a signed document to preserve its signature.' });
+        updateState({ banner: { kind: 'error', message: 'Save is disabled for a signed document to preserve its signature.' } });
         return;
       }
+      saving = true;
+      // Export + upload has no progress of its own; say something so the click
+      // does not look ignored.
+      updateState({ banner: { kind: 'info', message: 'Saving to the record…' } });
       try {
         // ServiceNow requires the CSRF user token (X-UserToken) on state-changing
         // REST calls authenticated via the session cookie; without it these 401.
         const userToken = getUserToken();
-        await saveToRecord(instance, async (buffer) => {
+        const saved = await saveToRecord(instance, async (buffer) => {
           // Save is only reachable for UNSIGNED documents (signed docs are blocked
           // above to preserve their byte range), so the name must not imply "signed".
           const upload = await fetch(
@@ -101,17 +123,34 @@ async function mountViewer({ host, updateState, properties }) {
             }
           );
           if (!upload.ok) {
-            throw new Error('upload failed');
+            throw new Error(`upload failed (HTTP ${upload.status})`);
           }
+          const created = parseUploadedAttachment(await upload.json());
           // delete original only after a confirmed successful upload
           await fetch(`/api/now/attachment/${encodeURIComponent(attachmentId)}`, {
             method: 'DELETE',
             credentials: 'same-origin',
             headers: userToken ? { 'X-UserToken': userToken } : {}
           });
+          return created;
+        });
+        // The original is gone; re-point at the file we just created so a later
+        // Save replaces it instead of adding another copy.
+        if (saved.sysId) {
+          attachmentId = saved.sysId;
+        }
+        updateState({
+          banner: {
+            kind: 'success',
+            message: saved.fileName
+              ? `Saved to the record as ${saved.fileName}.`
+              : 'Saved to the record.'
+          }
         });
       } catch (e) {
-        updateState({ bannerError: `Save failed: ${e.message}` });
+        updateState({ banner: { kind: 'error', message: `Save failed: ${e.message}` } });
+      } finally {
+        saving = false;
       }
     };
 
@@ -135,7 +174,7 @@ createCustomElement('x-2169521-nutrient-viewer', {
     recordId: { default: '' },
     namespace: { default: '2169521' }
   },
-  initialState: { instance: null, error: '', bannerError: '' },
+  initialState: { instance: null, error: '', banner: null, choices: [], chosenId: '' },
   view: (state, { dispatch }) => {
     // A pre-mount fatal error (bad attachment / SDK blocked) shows instead of the
     // viewer — nothing has mounted yet. A post-mount action error (sign/save)
@@ -143,13 +182,42 @@ createCustomElement('x-2169521-nutrient-viewer', {
     if (state.error) {
       return <div className="nv-error">{state.error}</div>;
     }
+    // More than one PDF on the record and nothing pinned: ask which one. Rendering
+    // the picker INSTEAD of .nv-root keeps the viewer unmounted; choosing re-renders
+    // .nv-root, whose insert hook re-dispatches NV#MOUNT with the chosen id.
+    if (state.choices.length) {
+      return (
+        <div className="nv-picker">
+          <h1 className="nv-picker-title">
+            This record has {state.choices.length} PDF attachments
+          </h1>
+          <p className="nv-picker-sub">Choose the one to open.</p>
+          <ul className="nv-picker-list">
+            {state.choices.map((row) => (
+              <li key={row.sys_id}>
+                <button
+                  type="button"
+                  className="nv-picker-item"
+                  on={{ click: () => dispatch('NV#PICK', { attachmentId: row.sys_id }) }}
+                >
+                  <span className="nv-picker-name">{row.file_name || row.sys_id}</span>
+                  <span className="nv-picker-meta">{formatAttachmentMeta(row)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
     return (
       <div className="nv-wrap">
         <div
-          className="nv-banner"
-          style={{ display: state.bannerError ? 'block' : 'none' }}
+          className={`nv-banner nv-banner--${state.banner ? state.banner.kind : 'none'}`}
+          role={state.banner && state.banner.kind === 'error' ? 'alert' : 'status'}
+          aria-live="polite"
+          style={{ display: state.banner ? 'block' : 'none' }}
         >
-          {state.bannerError || ''}
+          {state.banner ? state.banner.message : ''}
         </div>
         <div
           className="nv-root"
@@ -160,16 +228,22 @@ createCustomElement('x-2169521-nutrient-viewer', {
   },
   actionHandlers: {
     'NV#MOUNT': (coeffects) => {
-      const { host, updateState, properties } = coeffects;
-      // Accept a specific attachment, or a record (table + recordId) whose newest PDF
-      // the viewer will resolve — from static props OR the URL query params.
+      const { host, updateState, properties, state } = coeffects;
+      // Accept a specific attachment, or a record (table + recordId) whose PDFs the
+      // viewer will list — from static props OR the URL query params.
       const ctx = urlContext();
       const hasRecord = (properties.table && properties.recordId) || (ctx.table && ctx.recordId);
-      if (!properties.attachmentId && !hasRecord) {
+      const hasAttachment = properties.attachmentId || ctx.attachmentId || state.chosenId;
+      if (!hasAttachment && !hasRecord) {
         updateState({ error: 'No attachment or record specified.' });
         return;
       }
-      mountViewer({ host, updateState, properties });
+      mountViewer({ host, updateState, properties, chosenId: state.chosenId });
+    },
+    'NV#PICK': ({ action, updateState }) => {
+      // Clearing choices swaps the picker back out for .nv-root; its insert hook then
+      // fires NV#MOUNT, which reads chosenId and skips resolution.
+      updateState({ choices: [], chosenId: action.payload.attachmentId });
     },
     'COMPONENT_DISCONNECTED': ({ state }) => {
       if (state.instance && typeof state.instance.destroy === 'function') {

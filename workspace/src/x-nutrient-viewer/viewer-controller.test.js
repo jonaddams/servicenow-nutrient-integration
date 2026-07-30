@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SDK_CDN_URL, ensureSdkLoaded, buildToolbar, hasSignature,
-  saveToRecord, signDocument, loadTrustedCerts, loadDocument, resolveAttachmentId
+  saveToRecord, signDocument, loadTrustedCerts, loadDocument, resolveAttachmentId,
+  listPdfAttachments, formatAttachmentMeta, parseUploadedAttachment
 } from './viewer-controller.js';
 
 const fakeNutrient = {
@@ -38,6 +39,25 @@ test('saveToRecord exports then uploads the exported bytes', async () => {
   const uploadFn = async (buf) => { calls.push(`upload:${buf}`); };
   await saveToRecord(instance, uploadFn);
   assert.deepEqual(calls, ['export', 'upload:BYTES']);
+});
+
+// The caller needs the newly created attachment's identity back: to report the saved
+// filename, and to re-point at it so a second Save replaces rather than piles up.
+test('saveToRecord returns whatever uploadFn resolves to', async () => {
+  const instance = { exportPDF: async () => 'BYTES' };
+  const result = await saveToRecord(instance, async () => ({ sysId: 'NEW1', fileName: 'saved-1.pdf' }));
+  assert.deepEqual(result, { sysId: 'NEW1', fileName: 'saved-1.pdf' });
+});
+
+test('parseUploadedAttachment reads sys_id and file_name from a result envelope', () => {
+  const json = { result: { sys_id: 'ATT9', file_name: 'saved-123.pdf', size_bytes: '1000' } };
+  assert.deepEqual(parseUploadedAttachment(json), { sysId: 'ATT9', fileName: 'saved-123.pdf' });
+});
+
+test('parseUploadedAttachment reads a bare body and tolerates missing fields', () => {
+  assert.deepEqual(parseUploadedAttachment({ sys_id: 'A', file_name: 'f.pdf' }), { sysId: 'A', fileName: 'f.pdf' });
+  assert.deepEqual(parseUploadedAttachment({}), { sysId: '', fileName: '' });
+  assert.deepEqual(parseUploadedAttachment(null), { sysId: '', fileName: '' });
 });
 
 test('signDocument mints token then signs with CAdES/b_lt and jwt', async () => {
@@ -109,6 +129,69 @@ test('resolveAttachmentId returns empty string without table/recordId', async ()
 test('resolveAttachmentId returns empty string on non-ok', async () => {
   const id = await resolveAttachmentId({ table: 'incident', recordId: 'REC1', fetchImpl: async () => ({ ok: false, json: async () => ({}) }) });
   assert.equal(id, '');
+});
+
+// The record-level launcher carries no attachment identity, so a record with more
+// than one PDF must offer a choice rather than silently opening the newest.
+test('listPdfAttachments returns every PDF newest-first with display fields', async () => {
+  let capturedUrl = null;
+  const rows = [
+    { sys_id: 'NEW', file_name: 'one-bowl.pdf', size_bytes: '75300', sys_created_on: '2026-07-22 13:57:58' },
+    { sys_id: 'OLD', file_name: 'marion.pdf', size_bytes: '48800', sys_created_on: '2026-07-20 07:48:09' }
+  ];
+  const fetchImpl = async (url) => { capturedUrl = url; return { ok: true, json: async () => ({ result: rows }) }; };
+  const list = await listPdfAttachments({ table: 'incident', recordId: 'REC1', fetchImpl, userToken: 'UT' });
+  assert.deepEqual(list.map((r) => r.sys_id), ['NEW', 'OLD']);
+  assert.equal(list[0].file_name, 'one-bowl.pdf');
+  assert.match(capturedUrl, /sys_attachment/);
+  assert.match(capturedUrl, /content_typeLIKEpdf/);
+  assert.match(capturedUrl, /ORDERBYDESCsys_created_on/);
+  // needs more than sys_id so the picker can label each choice
+  assert.match(capturedUrl, /file_name/);
+  assert.match(capturedUrl, /size_bytes/);
+  assert.match(capturedUrl, /sys_created_on/);
+});
+
+test('listPdfAttachments sends X-UserToken and same-origin credentials', async () => {
+  let opts = null;
+  const fetchImpl = async (_url, o) => { opts = o; return { ok: true, json: async () => ({ result: [] }) }; };
+  await listPdfAttachments({ table: 'incident', recordId: 'REC1', fetchImpl, userToken: 'UT-9' });
+  assert.equal(opts.headers['X-UserToken'], 'UT-9');
+  assert.equal(opts.credentials, 'same-origin');
+});
+
+test('listPdfAttachments requests more than one row', async () => {
+  let capturedUrl = null;
+  const fetchImpl = async (url) => { capturedUrl = url; return { ok: true, json: async () => ({ result: [] }) }; };
+  await listPdfAttachments({ table: 'incident', recordId: 'REC1', fetchImpl });
+  const limit = Number(/sysparm_limit=(\d+)/.exec(capturedUrl)[1]);
+  assert.ok(limit > 1, `expected a limit above 1, got ${limit}`);
+});
+
+test('listPdfAttachments returns [] without table/recordId, on non-ok, and on throw', async () => {
+  assert.deepEqual(await listPdfAttachments({ table: '', recordId: '', fetchImpl: async () => ({ ok: true, json: async () => ({}) }) }), []);
+  assert.deepEqual(await listPdfAttachments({ table: 'incident', recordId: 'R', fetchImpl: async () => ({ ok: false, json: async () => ({}) }) }), []);
+  assert.deepEqual(await listPdfAttachments({ table: 'incident', recordId: 'R', fetchImpl: async () => { throw new Error('offline'); } }), []);
+});
+
+test('listPdfAttachments tolerates a bare (harness) array body', async () => {
+  const fetchImpl = async () => ({ ok: true, json: async () => ([{ sys_id: 'A' }]) });
+  assert.deepEqual((await listPdfAttachments({ table: 't', recordId: 'r', fetchImpl })).map((r) => r.sys_id), ['A']);
+});
+
+test('resolveAttachmentId still returns the newest of several PDFs', async () => {
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => ({ result: [{ sys_id: 'NEWEST' }, { sys_id: 'OLDER' }] })
+  });
+  assert.equal(await resolveAttachmentId({ table: 'incident', recordId: 'R', fetchImpl }), 'NEWEST');
+});
+
+test('formatAttachmentMeta renders decimal size and date, matching the ServiceNow sidebar', () => {
+  assert.equal(formatAttachmentMeta({ size_bytes: '48800', sys_created_on: '2026-07-20 07:48:09' }), '48.8 KB · 2026-07-20');
+  assert.equal(formatAttachmentMeta({ size_bytes: '2500000', sys_created_on: '2026-01-02 00:00:00' }), '2.5 MB · 2026-01-02');
+  assert.equal(formatAttachmentMeta({ size_bytes: '512', sys_created_on: '' }), '512 B');
+  assert.equal(formatAttachmentMeta({}), '');
 });
 
 test('ensureSdkLoaded resolves existing global without touching DOM', async () => {
