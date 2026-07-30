@@ -70,6 +70,14 @@ Deploy in this order. Each guide is step‑by‑step; start with the shared serv
 
 *(Deploying both UIs? Do Step 1 once, then both client guides — they don't conflict.)*
 
+### Step 3 — Verify it works
+Each guide ends with a checklist — run the one for your client, as an admin **and** as a non‑admin:
+- Server layer: [`shared/README.md` → Verify the server layer](./shared/README.md#verify-the-server-layer)
+- Classic: [`classic-ui/README.md` §7 Test](./classic-ui/README.md)
+- Workspace: [`workspace/README.md` §11 Test checklist](./workspace/README.md) — step‑by‑step with expected results and likely causes
+
+> **Current validation status (2026‑07‑30):** the Classic client is validated end‑to‑end as admin *and* non‑admin. The Workspace client is validated as **admin only**; its attachment picker and Save banners are deployed and unit‑tested but not yet clicked through by a human, and it has never been run as a non‑admin. See [`workspace/README.md` §9](./workspace/README.md).
+
 > **Optional:** [`local-harness/`](./local-harness) is a small Node app to exercise the Nutrient viewer + signing **offline**, without a ServiceNow instance. Handy for a quick demo or to confirm your license key and DWS token work. Not part of a ServiceNow deployment.
 
 ---

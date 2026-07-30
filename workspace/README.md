@@ -123,9 +123,16 @@ classic build):
 `''`. Inject the domain-valid key **locally** before deploying, and **revert to
 `''` before committing** — it must not enter git history:
 
-```
-# from workspace/, with the key in the git-ignored ../.env.local:
-node -e 'const fs=require("fs");const k=(fs.readFileSync("../.env.local","utf8").match(/^NUTRIENT_WEB_SDK_LICENSE_KEY=(.*)$/m)||[])[1].trim();const p="src/x-nutrient-viewer/index.js";fs.writeFileSync(p,fs.readFileSync(p,"utf8").replace("const LICENSE_KEY = '"'"''"'"';","const LICENSE_KEY = '"'"'"+k+"'"'"';"));'
+1. Open `src/x-nutrient-viewer/index.js`.
+2. Find line ~12: `const LICENSE_KEY = '';`
+3. Paste your key between the quotes and save.
+4. Deploy (§5).
+5. **Change it back to `''`** as soon as the deploy finishes.
+
+Confirm nothing is staged before you commit:
+
+```bash
+git diff | grep "LICENSE_KEY = '[^']"   # must print nothing
 ```
 
 It ends up in the component bundle shipped to the instance (same trade-off as
@@ -232,7 +239,9 @@ Trusted Domains, by release):
 | `script-src` | `'wasm-unsafe-eval'` | Instantiate the SDK's WASM. |
 | `worker-src` / `child-src` | `blob:` | SDK workers from `blob:` URLs. |
 
-## 8. Sign-then-save limitation
+## 8. Save behaviour
+
+### Sign-then-save limitation
 
 Once signed, **Save is disabled** (intended). `onSave` calls
 `hasSignature(instance)` first and, if signed, shows a banner and returns
@@ -240,7 +249,7 @@ without exporting — `exportPDF()` re-serializes the bytes and would invalidate
 the CAdES/PAdES byte-range signature. Signing and save-as-PDF are mutually
 exclusive per document (same as classic).
 
-## 8a. Save feedback
+### Feedback
 
 Save reports its outcome in a banner above the viewer, because
 `exportPDF()` + upload has no progress indicator of its own:
@@ -250,14 +259,16 @@ Save reports its outcome in a banner above the viewer, because
 | In flight | *"Saving to the record…"* (blue) |
 | Success | *"Saved to the record as `saved-<timestamp>.pdf`."* (green) |
 | Failure | *"Save failed: …"* (red), including the HTTP status on an upload error |
-| Blocked | *"Save is disabled for a signed document…"* (red) — see §8 |
+| Blocked | *"Save is disabled for a signed document…"* (red) — see above |
 
 Save replaces the attachment: it uploads the exported PDF, then deletes the
 original **only after** the upload succeeds. The component then re-points at the
 newly created attachment, so a second Save replaces that file rather than adding
 another copy. A concurrent second click while a save is in flight is ignored.
 
-## 9. Validated on the dev instance (2026-07)
+## 9. Validation status
+
+### Confirmed live on the dev instance, as admin (2026-07)
 
 - ✅ Record → **"Open in Nutrient"** (action bar) → full-window modal → viewer
   renders the record's PDF.
@@ -266,13 +277,24 @@ another copy. A concurrent second click while a save is in flight is ignored.
 - ✅ **Digitally Sign** → `getSignaturesInfo()` reports
   `status: 'valid', certificateChainValidationStatus: 'ok', isTrusted: true`
   (green) with the three CA certs uploaded.
-- ✅ Save (unsigned) replaces the attachment and reports success in a banner
-  (§8a); Save disabled after signing (§8).
-- ✅ **Multiple PDFs on one record** → picker lists both; choosing the older one
-  opens *that* document (previously the newest always won).
+- ✅ Save (unsigned) replaces the attachment; Save disabled after signing (§8).
 
-Re-run as a **non-admin** `nutrient_user` before a customer demo to confirm the
-role-gating end-to-end.
+### Deployed but NOT yet clicked through by a human (2026-07-30)
+
+The attachment picker and the Save feedback banners are deployed and unit-tested,
+and the component compiled clean, but nobody has confirmed them in a browser:
+
+- ⬜ **Multiple PDFs on one record** → picker lists both; choosing the *older* one
+  opens **that** document (previously the newest always won).
+- ⬜ **Save banners** → in-flight, then green success naming `saved-<ts>.pdf`.
+- ⬜ **Second Save** replaces `saved-<ts>.pdf` rather than adding another copy.
+
+### Never run: non-admin pass
+
+The whole Workspace flow has **only ever been exercised as admin.** Run §11 as a
+non-admin `nutrient_user` before any customer demo. Note the picker added a
+`sys_attachment` **Table API read** — if a non-admin can't query it they'll see
+"No PDF attachment found" instead of the picker.
 
 ## 10. Notes / residual items
 
@@ -289,3 +311,35 @@ role-gating end-to-end.
 - **Signature level** — signatures came back PAdES `b-t` though `b_lt` is
   requested; valid + trusted regardless. Revisit only if long-term-validation
   (embedded revocation) is a hard requirement.
+
+## 11. Test checklist (for a reviewing SE)
+
+Work top to bottom. Each step says what you should see; if it differs, the
+**Likely cause** column is where to look first. Test as **admin** first, then
+repeat the whole list impersonating a non-admin with `itil` + `nutrient_user`.
+
+**Setup:** an OPEN incident (the attachment paperclip is hidden on
+Closed/Resolved records) with **two** PDFs attached, uploaded a few minutes
+apart so "newest" is unambiguous. On the dev instance: **INC0010002**.
+
+| # | Do this | Expect | Likely cause if it differs |
+|---|---|---|---|
+| 1 | Open the incident in Service Operations Workspace | Record loads with an **Open in Nutrient** button in the action bar | Button missing → run `/cache.do`, hard-refresh; then check `enable_for_all_experiences = true` and `scripted_client_condition` (§6) |
+| 2 | Click **Open in Nutrient** | Full-window modal opens | `g_modal` undefined → the declarative action isn't a Client Script type (§6) |
+| 3 | — | A **picker** lists both PDFs with filename, size, date | Straight to a viewer → only one PDF is a `content_type` matching `pdf`; "No PDF attachment found" → `sys_attachment` read denied (non-admin) |
+| 4 | Click the **older** PDF | **That** document renders (not the newest) | Wrong doc → the deployed bundle is stale; redeploy (§5) + hard-refresh |
+| 5 | — | Full toolbar, no watermark | Watermark → license key missing or not valid for this host (§4) |
+| 6 | Annotate something (highlight or comment) | Annotation appears | — |
+| 7 | Click **Save** | Blue *"Saving to the record…"*, then green *"Saved to the record as `saved-<ts>.pdf`"* | Red banner → read the message; 401 → `X-UserToken` / session; 403 → `nutrient_user` ACLs (shared §6) |
+| 8 | Close the modal, check the record's attachments | Original replaced by `saved-<ts>.pdf`; annotation is in it | Both files present → the delete failed (the banner would have said so) |
+| 9 | Reopen, **Save** again | Green banner; still exactly one `saved-*.pdf` (a *newer* timestamp) | Two `saved-*` files → stale bundle, redeploy |
+| 10 | Reopen and click **Digitally Sign** | Signature applied; **green/valid** validation banner | Red "Signing failed: …" → read it: rate limit, missing `nutrient.dws.api.token`, or DWS token invalid |
+| 11 | — | Banner says trusted/valid, **not** "untrusted" | "Untrusted" → the 3 CA certs aren't uploaded as 3 separate Active records, or `GET /certificates` is 401/403 (shared §6) |
+| 12 | Click **Save** on the now-signed doc | Red *"Save is disabled for a signed document…"*; document unchanged | Save succeeds → stale bundle; a saved-after-signing file would have a broken signature (§8) |
+| 13 | Open a record with **no** PDF | *"No PDF attachment found on this record."* | — |
+| 14 | Repeat 1–13 as `itil` + `nutrient_user` | Identical results | Any 403 → a missing `nutrient_user` grant; **first verify the role actually saved** on the user (Inherited = false) — a silently-failed role add makes every gate deny at once |
+
+**Reporting a problem:** include the browser console, the failing request's
+status from the Network tab, and whether you were admin or non-admin. A 500 with
+an **empty body and no `sys_log` entry** is almost always ECMAScript 2021 mode
+being off on a server script (shared §2).
